@@ -1,0 +1,20 @@
+version: '3.3'
+
+services:
+  test-queue-service:
+    container_name: test-queue-container
+    build: ./TestMessageQueue.Api
+    container_name: message.api
+    environment:
+      - "RabbitMqHostName=172.17.0.3"
+      - "RabbitMqUserName=admin"
+      - "RabbitMqPassword=admin"
+    ports:
+      - "5000:80"
+
+  rabbit:
+    image: rabbitmq:3.8.3-management
+    hostname: rabbit
+    ports:
+      - "15672:15672"
+      - "5672:5672"
