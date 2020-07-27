@@ -1,4 +1,4 @@
-﻿using RabbitMQ.Client;
+using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using TestMessageQueue.Services.Interface;
 using System;
@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using TestMessageQueue.Models.Options;
 using Newtonsoft.Json;
 using TestMessageQueue.Models;
+using System.Threading;
 
 namespace TestMessageQueue.Services.Sevice
 {
@@ -25,21 +26,20 @@ namespace TestMessageQueue.Services.Sevice
             _testQueueName = rabbitMqOptions.Value.QueueName;
             _factory = new ConnectionFactory()
             {
-                UserName =  rabbitMqOptions.Value.UserName,
+                UserName = rabbitMqOptions.Value.UserName,
                 Password = rabbitMqOptions.Value.Password,
                 VirtualHost = "/",
-                HostName =  rabbitMqOptions.Value.Hostname,
+                HostName = rabbitMqOptions.Value.Hostname,
                 Port = AmqpTcpEndpoint.UseDefaultPort
             };
-
-            _connection = _factory.CreateConnection();
-            _channel = _connection.CreateModel();
         }
 
         public async Task<bool> CreateMessage(string queueName, string message)
         {
             try
             {
+                _connection = _factory.CreateConnection();
+                _channel = _connection.CreateModel();
                 _channel.QueueDeclare(queue: queueName,
                                  durable: true,
                                  exclusive: false,
@@ -68,34 +68,37 @@ namespace TestMessageQueue.Services.Sevice
         {
             try
             {
-                _channel.QueueDeclare(queue: _testQueueName,
-                                 durable: true,
-                                 exclusive: false,
-                                 autoDelete: false,
-                                 arguments: null);
-
-                var properties = _channel.CreateBasicProperties();
-                properties.Persistent = true;
-
-                //prallel is not working.
-
-                for (int i = 1; i <= totalMessage; i++)
+                using (var connection = _factory.CreateConnection())
+                using (var channel = _connection.CreateModel())
                 {
-                    var message = JsonConvert.SerializeObject(new TestMessageModel()
-                    {
-                        ClientId = i,
-                        TimeStamps = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss")
-                    });
+                    channel.QueueDeclare(queue: _testQueueName,
+                                     durable: true,
+                                     exclusive: false,
+                                     autoDelete: false,
+                                     arguments: null);
 
-                    _channel.BasicPublish(exchange: "",
-                                         routingKey: _testQueueName,
-                                         basicProperties: properties,
-                                         body: Encoding.UTF8.GetBytes(message));
+                    var properties = channel.CreateBasicProperties();
+                    properties.Persistent = true;
+
+                    //prallel is not working.
+
+                    for (int i = 1; i <= totalMessage; i++)
+                    {
+                        var message = JsonConvert.SerializeObject(new TestMessageModel()
+                        {
+                            ClientId = i,
+                            TimeStamps = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss")
+                        });
+
+                        channel.BasicPublish(exchange: "",
+                                             routingKey: _testQueueName,
+                                             basicProperties: properties,
+                                             body: Encoding.UTF8.GetBytes(message));
+                    }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                var err = ex.StackTrace;
                 return false;
             }
 
@@ -106,11 +109,11 @@ namespace TestMessageQueue.Services.Sevice
         {
             var actualResult = true;
 
-            var connection = _factory.CreateConnection();
-            var channel = connection.CreateModel();
-
             try
             {
+                var connection = _factory.CreateConnection();
+                var channel = connection.CreateModel();
+
                 channel.QueueDeclare(queue: queueName,
                                  durable: true,
                                  exclusive: false,
@@ -134,6 +137,13 @@ namespace TestMessageQueue.Services.Sevice
             }
             catch
             {
+                var thread = new Thread(() =>
+                {
+                    Thread.Sleep(30000);
+                    GetMessage(queueName, delegateFunc);
+                });
+
+                thread.Start();
             }
         }
 
