@@ -69,7 +69,7 @@ namespace TestMessageQueue.Services.Sevice
             try
             {
                 using (var connection = _factory.CreateConnection())
-                using (var channel = _connection.CreateModel())
+                using (var channel = connection.CreateModel())
                 {
                     channel.QueueDeclare(queue: _testQueueName,
                                      durable: true,
